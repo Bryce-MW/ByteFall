@@ -39,7 +39,8 @@ The file is broken into blocks of 64 Bytes. Note that little-endian systems are 
 |64 Bytes private key OR empty                                   |
 +----------------------------------------------------------------+
 
-Start of files: (directories are just special files. I haven't fully decided how they will work yet.
+Start of files: directiories will have a size of 0 and the hash will only include the name. if the parent dir is a regular file, then this file is a piece.
+The piece number is the piece size which is a bit weird. I guess pieces also don't have to have the same sizes. Hmm, more thought to be done here.
 +----------------------------------------------------------------+
 |Null terminated string with the name of the file. Max 255 bytes |
 |UTF-8 encoded. Forward slash not allowed. Windows will need     |
