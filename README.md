@@ -30,13 +30,13 @@ The file is broken into blocks of 64 Bytes. Note that little-endian systems are 
 +----------------------------------------------------------------+
 |64 Byte salt so that multiple Waterfalls can have the same name |
 +----------------------------------------------------------------+
-|64 Byte Hash of filename and salt. Must be valid                |
+|32B Hash name and salt----------32B Public Key------------------|
 +----------------------------------------------------------------+
 |4 Bytes Number of Files. 60 Bytes Reserved.                     |
 +----------------------------------------------------------------+
-|64 Bytes private key OR 32 Bytes of 0, 32 Bytes public key      |
-+----------------------------------------------------------------+
 |64 Bytes Signature of header with public key                    |
++----------------------------------------------------------------+
+|64 Bytes private key OR empty                                   |
 +----------------------------------------------------------------+
 
 Start of files: (directories are just special files. I haven't fully decided how they will work yet.
@@ -48,9 +48,7 @@ Start of files: (directories are just special files. I haven't fully decided how
 +----------------------------------------------------------------+
 |8BFileSz8BCrDate8BChDate4BPS4BFV4BPMFlags/Reserved--------------| (File Size, Creation Timestamp, Change Timespamp, Piece Size, File Version, Permissions, Flags)
 +----------------------------------------------------------------+
-|64 Bytes hash of file info and file (multipart)                 |
-+----------------------------------------------------------------+
-|64 Bytes hash of parent directory                               | (0 if file at root)
+|32B hash info and file multipart32B hash of parent directory    | (dir hash 0 if file at root)
 +----------------------------------------------------------------+
 
 Footer:
