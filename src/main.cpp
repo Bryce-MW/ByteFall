@@ -20,13 +20,19 @@
  *  * Allow folders to have the same name
  *  * Make searching more efficient (possibly with local_persist last found?)
  *  * Pull waterfall_file creation out into a function
+ *  * Change the format of files to reduce space taken by the name
+ *    * I am thinking about moving the info and hash to the top and adding a field for
+ *      number of rows (up to 4) of name. Though this makes reading the file harder
+ *      perhaps I could store the names in a separate table and use an index into that
+ *      table. That may be a lot easier to read by allowing me to read larger sections at
+ *      once.
  */
 
 global_variable waterfall_file_arena GlobalFiles;
 
-int AddFile(const char *Name, const struct stat *Properties,
-            int type, struct FTW *Ftw) {
-    local_persist waterfall_file *Parent = nullptr;
+int AddFile(const char* Name, const struct stat* Properties,
+            int type, struct FTW* Ftw) {
+    local_persist waterfall_file* Parent = nullptr;
     if (type == FTW_D) {
         waterfall_file NewFile = {};
         memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
@@ -54,11 +60,11 @@ int AddFile(const char *Name, const struct stat *Properties,
             // NOTE(bryce): At this point, the last directory is Name to Name + base
             uint8 LastName[NAME_SIZE];
             memcpy(LastName, TmpName, base);
-            if (Parent && !strcmp((c8 *) Parent->Name, (c8 *) LastName)) {
+            if (Parent && !strcmp((c8*)Parent->Name, (c8*)LastName)) {
                 memcpy(NewFile.ParentHash, Parent->Hash, HASH_SIZE);
             } else {
                 for (uint32 FileIndex = 0; FileIndex < GlobalFiles.Count; FileIndex++) {
-                    if (!strcmp((c8 *) GlobalFiles.Files[FileIndex].Name, (c8 *) LastName)) {
+                    if (!strcmp((c8*)GlobalFiles.Files[FileIndex].Name, (c8*)LastName)) {
                         Parent = &GlobalFiles.Files[FileIndex];
                         break;
                     }
@@ -69,7 +75,7 @@ int AddFile(const char *Name, const struct stat *Properties,
             }
         }
         if (GlobalFiles.Count == GlobalFiles.Capacity) {
-            auto *NewFiles = (waterfall_file *) malloc(GlobalFiles.Capacity * 2 * sizeof(waterfall_file));
+            auto* NewFiles = (waterfall_file*)malloc(GlobalFiles.Capacity * 2 * sizeof(waterfall_file));
             memcpy(NewFiles, GlobalFiles.Files,
                    GlobalFiles.Count * sizeof(waterfall_file));
             free(GlobalFiles.Files);
@@ -95,8 +101,8 @@ int AddFile(const char *Name, const struct stat *Properties,
             puts((c8*)NewFile.Name);
             return 0;
         }
-        auto *FileMemory = (uint8 *) mmap(nullptr, NewFile.Size, PROT_READ, MAP_SHARED,
-                                          fileno(FileToHash), 0);
+        auto* FileMemory = (uint8*)mmap(nullptr, NewFile.Size, PROT_READ, MAP_SHARED,
+                                        fileno(FileToHash), 0);
         if (!FileMemory) {
             puts("File mmap failed!");
             return -1;
@@ -104,14 +110,14 @@ int AddFile(const char *Name, const struct stat *Properties,
         crypto_generichash_state HashState;
         crypto_generichash_init(&HashState, nullptr, 0, HASH_SIZE);
         crypto_generichash_update(&HashState, NewFile.Name, NAME_SIZE);
-        crypto_generichash_update(&HashState, (uc8 *) FileMemory, NewFile.Size);
-        crypto_generichash_final(&HashState, (uc8 *) &NewFile.Hash, HASH_SIZE);
+        crypto_generichash_update(&HashState, (uc8*)FileMemory, NewFile.Size);
+        crypto_generichash_final(&HashState, (uc8*)&NewFile.Hash, HASH_SIZE);
         munmap(FileMemory, NewFile.Size);
 
         if (Ftw->level) {
             uint32 ToRemove = Ftw->level;
             uint32 base = Ftw->base;
-            auto *TmpName = (uint8 *) Name;
+            auto* TmpName = (uint8*)Name;
             while (uint8 Char = *(TmpName++)) {
                 base--;
                 if (Char == '/') {
@@ -124,11 +130,11 @@ int AddFile(const char *Name, const struct stat *Properties,
             // NOTE(bryce): At this point, the last directory is Name to Name + base
             uint8 LastName[NAME_SIZE];
             memcpy(LastName, TmpName, base);
-            if (Parent && !strcmp((c8 *) Parent->Name, (c8 *) LastName)) {
+            if (Parent && !strcmp((c8*)Parent->Name, (c8*)LastName)) {
                 memcpy(NewFile.ParentHash, Parent->Hash, HASH_SIZE);
             } else {
                 for (uint32 FileIndex = 0; FileIndex < GlobalFiles.Count; FileIndex++) {
-                    if (!strcmp((c8 *) GlobalFiles.Files[FileIndex].Name, (c8 *) LastName)) {
+                    if (!strcmp((c8*)GlobalFiles.Files[FileIndex].Name, (c8*)LastName)) {
                         Parent = &GlobalFiles.Files[FileIndex];
                         break;
                     }
@@ -139,7 +145,7 @@ int AddFile(const char *Name, const struct stat *Properties,
             }
         }
         if (GlobalFiles.Count == GlobalFiles.Capacity) {
-            auto *NewFiles = (waterfall_file *) malloc(GlobalFiles.Capacity * 2 * sizeof(waterfall_file));
+            auto* NewFiles = (waterfall_file*)malloc(GlobalFiles.Capacity * 2 * sizeof(waterfall_file));
             memcpy(NewFiles, GlobalFiles.Files,
                    GlobalFiles.Count * sizeof(waterfall_file));
             free(GlobalFiles.Files);
@@ -153,9 +159,9 @@ int AddFile(const char *Name, const struct stat *Properties,
     return 0;
 }
 
-internal bool32 Input(uint8 *Prompt, uint8 *Dest, uint64 max_size) {
-    printf("%s", (char *) (Prompt));
-    if (fgets((char *) Dest, max_size, stdin)) {
+internal bool32 Input(uint8* Prompt, uint8* Dest, uint64 max_size) {
+    printf("%s", (char*)(Prompt));
+    if (fgets((char*)Dest, max_size, stdin)) {
         for (uint64 StrIndex = max_size - 1; StrIndex >= 0; StrIndex--) {
             if (Dest[StrIndex]) {
                 Dest[StrIndex] = 0;
@@ -179,15 +185,15 @@ int main() {
     Waterfall.Header.VersionMajor = VERSION_MAJOR;
     Waterfall.Header.VersionMinor = VERSION_MINOR;
     Waterfall.Header.VersionPatch = VERSION_PATCH;
-    Input((uint8 *) "Waterfall Name ->", Waterfall.Header.Name, 64 * 4);
+    Input((uint8*)"Waterfall Name ->", Waterfall.Header.Name, 64 * 4);
     randombytes_buf(&Waterfall.Header.Salt, SALT_SIZE);
     crypto_generichash(Waterfall.Header.WaterfallHash, HASH_SIZE,
                        Waterfall.Header.Name, NAME_SIZE + SALT_SIZE,
                        nullptr, 0);
-    crypto_sign_keypair((uc8 *) &Waterfall.Header.PK, (uc8 *) &Waterfall.Header.SK);
+    crypto_sign_keypair((uc8*)&Waterfall.Header.PK, (uc8*)&Waterfall.Header.SK);
 
     struct stat Properties;
-    if (stat((c8 *) Waterfall.Header.Name, &Properties)) {
+    if (stat((c8*)Waterfall.Header.Name, &Properties)) {
         puts("File not found!");
         return -1;
     }
@@ -219,8 +225,8 @@ int main() {
         crypto_generichash_state HashState;
         crypto_generichash_init(&HashState, nullptr, 0, HASH_SIZE);
         crypto_generichash_update(&HashState, SingleFile.Name, NAME_SIZE);
-        crypto_generichash_update(&HashState, (uc8 *) FileMemory, SingleFile.Size);
-        crypto_generichash_final(&HashState, (uc8 *) &SingleFile.Hash, HASH_SIZE);
+        crypto_generichash_update(&HashState, (uc8*)FileMemory, SingleFile.Size);
+        crypto_generichash_final(&HashState, (uc8*)&SingleFile.Hash, HASH_SIZE);
 
         Waterfall.Files = &SingleFile;
     }
@@ -228,30 +234,30 @@ int main() {
         if (GlobalFiles.Files) {
             free(GlobalFiles.Files);
         }
-        GlobalFiles.Files = (waterfall_file *) malloc(100 * sizeof(waterfall_file));
+        GlobalFiles.Files = (waterfall_file*)malloc(100 * sizeof(waterfall_file));
         GlobalFiles.Capacity = 100;
         GlobalFiles.Count = 0;
-        nftw((c8 *) Waterfall.Header.Name, AddFile, 10, FTW_MOUNT | FTW_CHDIR);
+        nftw((c8*)Waterfall.Header.Name, AddFile, 10, FTW_MOUNT | FTW_CHDIR);
         Waterfall.Files = GlobalFiles.Files;
         Waterfall.Header.FileCount = GlobalFiles.Count;
     }
 
 
     crypto_sign_detached(Waterfall.Header.Signature, nullptr,
-                         (uc8 *) &Waterfall.Header,
+                         (uc8*)&Waterfall.Header,
                          sizeof(waterfall_header) - SIG_SIZE,
                          Waterfall.Header.SK);
 
     crypto_sign_state SignState;
     crypto_sign_init(&SignState);
-    crypto_sign_update(&SignState, (uc8 *) Waterfall.Files,
+    crypto_sign_update(&SignState, (uc8*)Waterfall.Files,
                        Waterfall.Header.FileCount * sizeof(waterfall_file));
     crypto_sign_final_create(&SignState, Waterfall.Footer.Signature, nullptr,
                              Waterfall.Header.SK);
     // TODO(bryce): Add peers
 
 
-    FILE *DebugOutput = fopen("test.waterfall", "wb");
+    FILE* DebugOutput = fopen("test.waterfall", "wb");
     fwrite(&Waterfall.Header, sizeof(waterfall_header), 1, DebugOutput);
     fwrite(Waterfall.Files, sizeof(waterfall_file), Waterfall.Header.FileCount,
            DebugOutput);
