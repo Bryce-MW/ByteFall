@@ -31,17 +31,17 @@ int AddFile(const char *Name, const struct stat *Properties,
         waterfall_file NewFile = {};
         memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
         NewFile.Size = 0;
-        NewFile.CreationDate = Properties->st_birthtimespec.tv_sec;
-        NewFile.ModificationDate = Properties->st_mtimespec.tv_sec;
+        //NewFile.CreationDate = Properties->st_birthtime; TODO(bryce): Cross platform
+        NewFile.ModificationDate = Properties->st_mtime;
         NewFile.PieceSize = Properties->st_size;
         NewFile.Version = 0;
         NewFile.Permissions = Properties->st_mode;
-        crypto_generichash((uc8 *) NewFile.Hash, HASH_SIZE, (uc8 *) &NewFile.Name, NAME_SIZE,
+        crypto_generichash((uc8*)NewFile.Hash, HASH_SIZE, (uc8*)&NewFile.Name, NAME_SIZE,
                            nullptr, 0);
         if (Ftw->level) {
             uint32 ToRemove = Ftw->level;
             uint32 base = Ftw->base;
-            auto *TmpName = (uint8 *) Name;
+            auto* TmpName = (uint8*)Name;
             while (uint8 Char = *(TmpName++)) {
                 base--;
                 if (Char == '/') {
@@ -83,16 +83,16 @@ int AddFile(const char *Name, const struct stat *Properties,
         waterfall_file NewFile = {};
         memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
         NewFile.Size = Properties->st_size;
-        NewFile.CreationDate = Properties->st_birthtimespec.tv_sec;
-        NewFile.ModificationDate = Properties->st_mtimespec.tv_sec;
+        //NewFile.CreationDate = Properties->st_birthtime;
+        NewFile.ModificationDate = Properties->st_mtime;
         NewFile.PieceSize = Properties->st_size;
         NewFile.Version = 0;
         NewFile.Permissions = Properties->st_mode;
 
-        FILE *FileToHash = fopen((c8 *) NewFile.Name, "rb");
+        FILE* FileToHash = fopen((c8*)NewFile.Name, "rb");
         if (!FileToHash) {
             puts("File read failed!");
-            puts((c8 *) NewFile.Name);
+            puts((c8*)NewFile.Name);
             return 0;
         }
         auto *FileMemory = (uint8 *) mmap(nullptr, NewFile.Size, PROT_READ, MAP_SHARED,
@@ -198,8 +198,8 @@ int main() {
         Waterfall.Header.FileCount = 1;
         memcpy(SingleFile.Name, Waterfall.Header.Name, NAME_SIZE);
         SingleFile.Size = Properties.st_size;
-        SingleFile.CreationDate = Properties.st_birthtimespec.tv_sec;
-        SingleFile.ModificationDate = Properties.st_mtimespec.tv_sec;
+        //SingleFile.CreationDate = Properties.st_birthtime;
+        SingleFile.ModificationDate = Properties.st_mtime;
         // TODO(bryce): Figure out how we are going to do pieces
         SingleFile.PieceSize = SingleFile.Size;
         // NOTE(bryce): We don't do any updates yet so this will always be 0 for now
@@ -207,9 +207,9 @@ int main() {
         // TODO(bryce): This is not really what I want here
         SingleFile.Permissions = Properties.st_mode;
 
-        FILE *FileToHash = fopen((c8 *) SingleFile.Name, "rb");
-        auto *FileMemory = (uint8 *) mmap(nullptr, SingleFile.Size, PROT_READ, MAP_SHARED,
-                                          fileno(FileToHash), 0);
+        FILE* FileToHash = fopen((c8*)SingleFile.Name, "rb");
+        auto* FileMemory = (uint8*)mmap(nullptr, SingleFile.Size, PROT_READ, MAP_SHARED,
+                                        fileno(FileToHash), 0);
 
         if (!FileMemory) {
             puts("File read failed!");
