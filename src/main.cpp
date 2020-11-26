@@ -31,8 +31,8 @@ int AddFile(const char *Name, const struct stat *Properties,
         waterfall_file NewFile = {};
         memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
         NewFile.Size = 0;
-        NewFile.CreationDate = Properties->st_birthtime;
-        NewFile.ModificationDate = Properties->st_mtime;
+        NewFile.CreationDate = Properties->st_birthtimespec.tv_sec;
+        NewFile.ModificationDate = Properties->st_mtimespec.tv_sec;
         NewFile.PieceSize = Properties->st_size;
         NewFile.Version = 0;
         NewFile.Permissions = Properties->st_mode;
@@ -83,8 +83,8 @@ int AddFile(const char *Name, const struct stat *Properties,
         waterfall_file NewFile = {};
         memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
         NewFile.Size = Properties->st_size;
-        NewFile.CreationDate = Properties->st_birthtime;
-        NewFile.ModificationDate = Properties->st_mtime;
+        NewFile.CreationDate = Properties->st_birthtimespec.tv_sec;
+        NewFile.ModificationDate = Properties->st_mtimespec.tv_sec;
         NewFile.PieceSize = Properties->st_size;
         NewFile.Version = 0;
         NewFile.Permissions = Properties->st_mode;
@@ -198,8 +198,8 @@ int main() {
         Waterfall.Header.FileCount = 1;
         memcpy(SingleFile.Name, Waterfall.Header.Name, NAME_SIZE);
         SingleFile.Size = Properties.st_size;
-        SingleFile.CreationDate = Properties.st_birthtime;
-        SingleFile.ModificationDate = Properties.st_mtime;
+        SingleFile.CreationDate = Properties.st_birthtimespec.tv_sec;
+        SingleFile.ModificationDate = Properties.st_mtimespec.tv_sec;
         // TODO(bryce): Figure out how we are going to do pieces
         SingleFile.PieceSize = SingleFile.Size;
         // NOTE(bryce): We don't do any updates yet so this will always be 0 for now
