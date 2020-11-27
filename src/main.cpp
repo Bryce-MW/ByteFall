@@ -28,138 +28,118 @@
  *      once.
  */
 
+struct file_type {
+    bool32 isDirectory;
+    bool32 isRegularFile;
+};
+
 global_variable waterfall_file_arena GlobalFiles;
 
-int AddFile(const char* Name, const struct stat* Properties,
-            int type, struct FTW* Ftw) {
-    local_persist waterfall_file* Parent = nullptr;
-    if (type == FTW_D) {
-        waterfall_file NewFile = {};
-        memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
-        NewFile.Size = 0;
-        //NewFile.CreationDate = Properties->st_birthtime; TODO(bryce): Cross platform
-        NewFile.ModificationDate = Properties->st_mtime;
-        NewFile.PieceSize = Properties->st_size;
-        NewFile.Version = 0;
-        NewFile.Permissions = Properties->st_mode;
-        crypto_generichash((uc8*)NewFile.Hash, HASH_SIZE, (uc8*)&NewFile.Name, NAME_SIZE,
-                           nullptr, 0);
-        if (Ftw->level) {
-            uint32 ToRemove = Ftw->level;
-            uint32 base = Ftw->base;
-            auto* TmpName = (uint8*)Name;
-            while (uint8 Char = *(TmpName++)) {
-                base--;
-                if (Char == '/') {
-                    ToRemove--;
-                }
-                if (ToRemove == 0) {
-                    break;
-                }
-            }
-            // NOTE(bryce): At this point, the last directory is Name to Name + base
-            uint8 LastName[NAME_SIZE];
-            memcpy(LastName, TmpName, base);
-            if (Parent && !strcmp((c8*)Parent->Name, (c8*)LastName)) {
-                memcpy(NewFile.ParentHash, Parent->Hash, HASH_SIZE);
-            } else {
-                for (uint32 FileIndex = 0; FileIndex < GlobalFiles.Count; FileIndex++) {
-                    if (!strcmp((c8*)GlobalFiles.Files[FileIndex].Name, (c8*)LastName)) {
-                        Parent = &GlobalFiles.Files[FileIndex];
-                        break;
-                    }
-                }
-                if (Parent) {
-                    memcpy(NewFile.ParentHash, Parent->Hash, HASH_SIZE);
-                }
-            }
-        }
-        if (GlobalFiles.Count == GlobalFiles.Capacity) {
-            auto* NewFiles = (waterfall_file*)malloc(GlobalFiles.Capacity * 2 * sizeof(waterfall_file));
-            memcpy(NewFiles, GlobalFiles.Files,
-                   GlobalFiles.Count * sizeof(waterfall_file));
-            free(GlobalFiles.Files);
-            GlobalFiles.Files = NewFiles;
-            GlobalFiles.Capacity *= 2;
-            Parent = nullptr;
-        }
-        GlobalFiles.Files[GlobalFiles.Count++] = NewFile;
-        Parent = &GlobalFiles.Files[GlobalFiles.Count];
-    } else if (type == FTW_F) {
-        waterfall_file NewFile = {};
-        memcpy(NewFile.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
-        NewFile.Size = Properties->st_size;
-        //NewFile.CreationDate = Properties->st_birthtime;
-        NewFile.ModificationDate = Properties->st_mtime;
-        NewFile.PieceSize = Properties->st_size;
-        NewFile.Version = 0;
-        NewFile.Permissions = Properties->st_mode;
+// TODO(bryce):
+//  * Get rid of struct stat and get the properties directly from the path in a platform
+//    agnostic way
+//  * Find a good way to get creation date if available and set to 0 otherwise
+//  * Decide on a better form of permissions. Perhaps only supporting the basics of whether
+//    the execute bit is on or not. Then synthesise it on Windows. There is just so much
+//    space unused that I wasn't sure what to do with it all.
+internal bool32
+FillFileProperties(waterfall_file* File, struct stat* Properties, file_type FileType) {
+    if (!(FileType.isDirectory || FileType.isRegularFile)) {
+        return 0;
+    }
 
-        FILE* FileToHash = fopen((c8*)NewFile.Name, "rb");
+    File->Size = FileType.isRegularFile ? Properties->st_size : 0;
+    File->ModificationDate = Properties->st_mtime;
+    File->PieceSize = File->Size;
+    File->Version = 0;
+    File->Permissions = Properties->st_mode;
+
+    return 1;
+}
+
+internal file_type
+GetFileType(struct stat* Properties) {
+    file_type Result = {
+            S_ISDIR(Properties->st_mode),
+            S_ISREG(Properties->st_mode)
+    };
+    return Result;
+}
+
+internal int32
+HashFile(waterfall_file* File, file_type FileType) {
+    crypto_generichash_state HashState;
+    crypto_generichash_init(&HashState, nullptr, 0, HASH_SIZE);
+    crypto_generichash_update(&HashState, File->Name, NAME_SIZE);
+
+    if (FileType.isRegularFile) {
+        FILE* FileToHash = fopen((c8*)File->Name, "rb");
         if (!FileToHash) {
             puts("File read failed!");
-            puts((c8*)NewFile.Name);
+            puts((c8*)File->Name);
             return 0;
         }
-        auto* FileMemory = (uint8*)mmap(nullptr, NewFile.Size, PROT_READ, MAP_SHARED,
+        auto* FileMemory = (uint8*)mmap(nullptr, File->Size, PROT_READ, MAP_SHARED,
                                         fileno(FileToHash), 0);
+        fclose(FileToHash);
         if (!FileMemory) {
             puts("File mmap failed!");
-            return -1;
+            return 0;
         }
-        crypto_generichash_state HashState;
-        crypto_generichash_init(&HashState, nullptr, 0, HASH_SIZE);
-        crypto_generichash_update(&HashState, NewFile.Name, NAME_SIZE);
-        crypto_generichash_update(&HashState, (uc8*)FileMemory, NewFile.Size);
-        crypto_generichash_final(&HashState, (uc8*)&NewFile.Hash, HASH_SIZE);
-        munmap(FileMemory, NewFile.Size);
+        crypto_generichash_update(&HashState, (uc8*)FileMemory, File->Size);
+        munmap(FileMemory, File->Size);
+    }
 
-        if (Ftw->level) {
-            uint32 ToRemove = Ftw->level;
-            uint32 base = Ftw->base;
-            auto* TmpName = (uint8*)Name;
-            while (uint8 Char = *(TmpName++)) {
-                base--;
-                if (Char == '/') {
-                    ToRemove--;
-                }
-                if (ToRemove == 0) {
-                    break;
-                }
-            }
-            // NOTE(bryce): At this point, the last directory is Name to Name + base
-            uint8 LastName[NAME_SIZE];
-            memcpy(LastName, TmpName, base);
-            if (Parent && !strcmp((c8*)Parent->Name, (c8*)LastName)) {
-                memcpy(NewFile.ParentHash, Parent->Hash, HASH_SIZE);
-            } else {
-                for (uint32 FileIndex = 0; FileIndex < GlobalFiles.Count; FileIndex++) {
-                    if (!strcmp((c8*)GlobalFiles.Files[FileIndex].Name, (c8*)LastName)) {
-                        Parent = &GlobalFiles.Files[FileIndex];
-                        break;
-                    }
-                }
-                if (Parent) {
-                    memcpy(NewFile.ParentHash, Parent->Hash, HASH_SIZE);
-                }
-            }
+    crypto_generichash_final(&HashState, (uc8*)&File->Hash, HASH_SIZE);
+
+    return 1;
+}
+
+int
+AddFile(const char* Name, const struct stat* Properties,
+        int type, struct FTW* Ftw) {
+    local_persist waterfall_file* Parent = nullptr;
+
+    file_type FileType = GetFileType((struct stat*)Properties);
+    if (!(FileType.isRegularFile || FileType.isDirectory)) {
+        return 0;
+    }
+    waterfall_file File = {};
+    FillFileProperties(&File, (struct stat*)Properties, FileType);
+    memcpy(File.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
+    if (!HashFile(&File, FileType)) {
+        return 0;
+    }
+    if (Parent) {
+        memcpy(&File.ParentHash, &Parent->Hash, HASH_SIZE);
+    } else {
+        puts("No parent found:");
+        puts((c8*)File.Name);
+    }
+
+    if (GlobalFiles.Count == GlobalFiles.Capacity) {
+        auto* NewFiles = (waterfall_file*)malloc(GlobalFiles.Capacity * 2 *
+                                                 sizeof(waterfall_file));
+        memcpy(NewFiles, GlobalFiles.Files,
+               GlobalFiles.Count * sizeof(waterfall_file));
+        free(GlobalFiles.Files);
+        if (Parent) {
+            Parent = NewFiles + (Parent - GlobalFiles.Files);
         }
-        if (GlobalFiles.Count == GlobalFiles.Capacity) {
-            auto* NewFiles = (waterfall_file*)malloc(GlobalFiles.Capacity * 2 * sizeof(waterfall_file));
-            memcpy(NewFiles, GlobalFiles.Files,
-                   GlobalFiles.Count * sizeof(waterfall_file));
-            free(GlobalFiles.Files);
-            GlobalFiles.Files = NewFiles;
-            GlobalFiles.Capacity *= 2;
-            Parent = nullptr;
-        }
-        GlobalFiles.Files[GlobalFiles.Count++] = NewFile;
+        GlobalFiles.Files = NewFiles;
+        GlobalFiles.Capacity *= 2;
+    }
+    GlobalFiles.Files[GlobalFiles.Count++] = File;
+
+    if (FileType.isDirectory) {
+        Parent = &GlobalFiles.Files[GlobalFiles.Count];
     }
 
     return 0;
 }
 
-internal bool32 Input(uint8* Prompt, uint8* Dest, uint64 max_size) {
+internal bool32
+Input(uint8* Prompt, uint8* Dest, uint64 max_size) {
     printf("%s", (char*)(Prompt));
     if (fgets((char*)Dest, max_size, stdin)) {
         for (uint64 StrIndex = max_size - 1; StrIndex >= 0; StrIndex--) {
@@ -174,7 +154,8 @@ internal bool32 Input(uint8* Prompt, uint8* Dest, uint64 max_size) {
     }
 }
 
-int main() {
+int
+main() {
     if (sodium_init() < 0) {
         return -1;
     }
