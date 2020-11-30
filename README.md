@@ -4,7 +4,7 @@ I was inspired to work on this by another project that I help out with occationa
 This software is currently on version alpha 0.0.0 which means that I havent implemented it. Other alpha versions may have incompatibilities between even minor versions. Once I am reasonably satisfied with how everthing works, it will move onto the beta stage where significant testing is done. Then it will move on to the release stage where I will consider it good enough to be used in production and hopefully few breaking changes will happen after that.
 # Current issues / notes
 * It's hard to find out which block of a large file is wrong
-* File is not very futur-proof
+* File is not very future-proof
 * There are major issues if the original host disappears.
 * Mitigation of increase of connected components such that some nodes would not have a path to an update or full node?
 * Perhaps separate download peers from fountain file distribution peers?
@@ -14,6 +14,7 @@ This software is currently on version alpha 0.0.0 which means that I havent impl
 * Cloudflare workers has a free tier that allows 100000 requests per day and free workers.dev subdomain. That could be a good start and means that we could pay with donations if it becomes popular but if it dies out, it would still work for free for a long time (hopefully). Not as super robust but should be good enough until someone smart has a better idea.
 * Possible use of WHOIS system to find domain of workers in case that needs to be switched at some point.
 * I have not yet figured out what the best way to do the actual file transfers.
+* The files should be listed in a hash table format so that searching for any specific one by their hash is easy to do.
 # Technical Details
 ## Libraries
 I will be using [libzt](https://github.com/zerotier/libzt) for the networking. This avoids issues with NAT and port forwarding and does the required encryption for me. It just solves many problems with few downsides. For the basic HTTP requests that I need to interact with Cloudflare Workers, I will be using [libcurl](https://curl.se/libcurl/) which will also do th Base64 encoding (though it is apparently rather slow at this). I will also need to parse the JSON that is produced from that and create JSON to send to it. [cJSON](https://github.com/DaveGamble/cJSON) seems to be one of the better ways to do this.
