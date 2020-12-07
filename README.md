@@ -43,7 +43,7 @@ The file is broken into blocks of 64 Bytes. Note that little-endian systems are 
 Start of files: directiories will have a size of 0 and the hash will only include the name. if the parent dir is a regular file, then this file is a piece.
 The piece number is 
 +----------------------------------------------------------------+
-|8BFileSz8BCrDate8BChDate4BPN4BFV4BPM8BNamePtFlags/Reserved------| (Size, Create Timestamp, Change Timespamp, Piece Number, Version, Permissions, Name Index, Flags)
+|8BFileSz8BCrDate8BChDate8BNamePt4BPN4BFV4BPMFlags/Reserved------| (Size, Create Timestamp, Change Timespamp, Piece Number, Version, Permissions, Name Index, Flags)
 +----------------------------------------------------------------+
 |32B hash info and file multipart32B hash of parent directory    | (dir hash 0 if file at root)
 +----------------------------------------------------------------+
