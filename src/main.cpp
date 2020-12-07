@@ -8,17 +8,20 @@
 #include <cstring>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <ftw.h>
+#include <libgen.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 0
 #define VERSION_PATCH 0
 
+#define TEST_FILENAME "test.waterfall"
+
 /**
  * TODO(bryce): General TODOS:
  *  * Handle errors properly
- *  * Allow folders to have the same name
- *  * Make searching more efficient (possibly with local_persist last found?)
  *  * Pull waterfall_file creation out into a function
  *  * Change the format of files to reduce space taken by the name
  *    * I am thinking about moving the info and hash to the top and adding a field for
@@ -33,15 +36,14 @@ struct file_type {
     bool32 isRegularFile;
 };
 
-global_variable waterfall_file_arena GlobalFiles;
 
 // TODO(bryce):
 //  * Get rid of struct stat and get the properties directly from the path in a platform
 //    agnostic way
 //  * Find a good way to get creation date if available and set to 0 otherwise
-//  * Decide on a better form of permissions. Perhaps only supporting the basics of whether
-//    the execute bit is on or not. Then synthesise it on Windows. There is just so much
-//    space unused that I wasn't sure what to do with it all.
+//  * Decide on a better form of permissions. Perhaps only supporting the basics of
+//    whether the execute bit is on or not. Then synthesise it on Windows. There is just
+//    so much space unused that I wasn't sure what to do with it all.
 internal bool32
 FillFileProperties(waterfall_file* File, struct stat* Properties, file_type FileType) {
     if (!(FileType.isDirectory || FileType.isRegularFile)) {
@@ -67,21 +69,21 @@ GetFileType(struct stat* Properties) {
 }
 
 internal int32
-HashFile(waterfall_file* File, file_type FileType) {
+HashFile(waterfall_file* File, file_type FileType, uint8* FilePath) {
     crypto_generichash_state HashState;
     crypto_generichash_init(&HashState, nullptr, 0, HASH_SIZE);
     crypto_generichash_update(&HashState, File->Name, NAME_SIZE);
 
     if (FileType.isRegularFile) {
-        FILE* FileToHash = fopen((c8*)File->Name, "rb");
-        if (!FileToHash) {
+        int32 FileNo = open((c8*)FilePath, O_RDONLY);
+        if (FileNo == -1) {
             puts("File read failed!");
-            puts((c8*)File->Name);
+            puts((c8*)FilePath);
             return 0;
         }
         auto* FileMemory = (uint8*)mmap(nullptr, File->Size, PROT_READ, MAP_SHARED,
-                                        fileno(FileToHash), 0);
-        fclose(FileToHash);
+                                        FileNo, 0);
+        close(FileNo);
         if (!FileMemory) {
             puts("File mmap failed!");
             return 0;
@@ -95,47 +97,57 @@ HashFile(waterfall_file* File, file_type FileType) {
     return 1;
 }
 
-int
-AddFile(const char* Name, const struct stat* Properties,
-        int type, struct FTW* Ftw) {
-    local_persist waterfall_file* Parent = nullptr;
-
-    file_type FileType = GetFileType((struct stat*)Properties);
-    if (!(FileType.isRegularFile || FileType.isDirectory)) {
+// STUDY(bryce): Use something better for recursive name storage. Perhaps one malloc
+//  before first call which is reallocated as needed.
+internal uint32
+ProcessTree(waterfall_file* Parent, FILE* WaterfallFile, uint8* FilePath) {
+    struct stat Properties;
+    if (stat((c8*)FilePath, &Properties)) {
+        puts("File not found!");
+        puts((c8*)FilePath);
         return 0;
     }
+    file_type FileType = GetFileType(&Properties);
+
     waterfall_file File = {};
-    FillFileProperties(&File, (struct stat*)Properties, FileType);
-    memcpy(File.Name, Name + Ftw->base, strlen(Name) - Ftw->base);
-    if (!HashFile(&File, FileType)) {
+    FillFileProperties(&File, &Properties, FileType);
+    strcpy((c8*)File.Name, basename((c8*)FilePath));
+    if (!HashFile(&File, FileType, FilePath)) {
         return 0;
     }
     if (Parent) {
         memcpy(&File.ParentHash, &Parent->Hash, HASH_SIZE);
-    } else {
-        puts("No parent found:");
-        puts((c8*)File.Name);
     }
 
-    if (GlobalFiles.Count == GlobalFiles.Capacity) {
-        auto* NewFiles = (waterfall_file*)malloc(GlobalFiles.Capacity * 2 *
-                                                 sizeof(waterfall_file));
-        memcpy(NewFiles, GlobalFiles.Files,
-               GlobalFiles.Count * sizeof(waterfall_file));
-        free(GlobalFiles.Files);
-        if (Parent) {
-            Parent = NewFiles + (Parent - GlobalFiles.Files);
-        }
-        GlobalFiles.Files = NewFiles;
-        GlobalFiles.Capacity *= 2;
-    }
-    GlobalFiles.Files[GlobalFiles.Count++] = File;
+    fwrite(&File, sizeof(waterfall_file), 1, WaterfallFile);
+    uint32 Result = 1;
 
     if (FileType.isDirectory) {
-        Parent = &GlobalFiles.Files[GlobalFiles.Count];
+        DIR* Dir = opendir((c8*)FilePath);
+        struct dirent* Entry;
+        if (!Dir) {
+            return Result;
+        }
+        uint32 PathLength = strlen((c8*)FilePath);
+        auto* NewPath = (uint8*)malloc(PathLength + 1);
+        memcpy(NewPath, FilePath, PathLength);
+        while ((Entry = readdir(Dir))) {
+            // TODO(bryce): Make these checks better
+            if (!strcmp(Entry->d_name, ".") || !strcmp(Entry->d_name, "..") ||
+                !strcmp(Entry->d_name, "/")) {
+                continue;
+            }
+            uint32 NewPathLength = strlen(Entry->d_name);
+            NewPath = (uint8*)realloc(NewPath, PathLength + NewPathLength + 2);
+            NewPath[PathLength] = '/';
+            memcpy((c8*)NewPath + PathLength + 1, Entry->d_name, NewPathLength + 1);
+            Result += ProcessTree(&File, WaterfallFile, NewPath);
+        }
+        free(NewPath);
+        closedir(Dir);
     }
 
-    return 0;
+    return Result;
 }
 
 internal bool32
@@ -157,96 +169,70 @@ Input(uint8* Prompt, uint8* Dest, uint64 max_size) {
 int
 main() {
     if (sodium_init() < 0) {
+        // NOTE(bryce): Crypto is required
         return -1;
     }
 
     // TODO(bryce): Build this from arguments
-    waterfall Waterfall = {};
-    memcpy(Waterfall.Header.MagicString, MAGIC_STRING, 32);
-    Waterfall.Header.VersionMajor = VERSION_MAJOR;
-    Waterfall.Header.VersionMinor = VERSION_MINOR;
-    Waterfall.Header.VersionPatch = VERSION_PATCH;
-    Input((uint8*)"Waterfall Name ->", Waterfall.Header.Name, 64 * 4);
-    randombytes_buf(&Waterfall.Header.Salt, SALT_SIZE);
-    crypto_generichash(Waterfall.Header.WaterfallHash, HASH_SIZE,
-                       Waterfall.Header.Name, NAME_SIZE + SALT_SIZE,
+    waterfall_header Header = {};
+    memcpy(Header.MagicString, MAGIC_STRING, 32);
+    Header.VersionMajor = VERSION_MAJOR;
+    Header.VersionMinor = VERSION_MINOR;
+    Header.VersionPatch = VERSION_PATCH;
+    Input((uint8*)"Waterfall Name ->", Header.Name, 64 * 4);
+    randombytes_buf(&Header.Salt, SALT_SIZE);
+    crypto_generichash(Header.WaterfallHash, HASH_SIZE,
+                       Header.Name, NAME_SIZE + SALT_SIZE,
                        nullptr, 0);
-    crypto_sign_keypair((uc8*)&Waterfall.Header.PK, (uc8*)&Waterfall.Header.SK);
+    crypto_sign_keypair((uc8*)&Header.PK, (uc8*)&Header.SK);
 
-    struct stat Properties;
-    if (stat((c8*)Waterfall.Header.Name, &Properties)) {
-        puts("File not found!");
-        return -1;
-    }
-    bool32 isDirectory = S_ISDIR(Properties.st_mode);
-    bool32 isRegularFile = S_ISREG(Properties.st_mode);
-    waterfall_file SingleFile = {};
-    if (isRegularFile) {
-        Waterfall.Header.FileCount = 1;
-        memcpy(SingleFile.Name, Waterfall.Header.Name, NAME_SIZE);
-        SingleFile.Size = Properties.st_size;
-        //SingleFile.CreationDate = Properties.st_birthtime;
-        SingleFile.ModificationDate = Properties.st_mtime;
-        // TODO(bryce): Figure out how we are going to do pieces
-        SingleFile.PieceSize = SingleFile.Size;
-        // NOTE(bryce): We don't do any updates yet so this will always be 0 for now
-        SingleFile.Version = 0;
-        // TODO(bryce): This is not really what I want here
-        SingleFile.Permissions = Properties.st_mode;
+    FILE* DebugOutput = fopen(TEST_FILENAME, "wb");
+    fwrite(&Header, sizeof(waterfall_header), 1, DebugOutput);
 
-        FILE* FileToHash = fopen((c8*)SingleFile.Name, "rb");
-        auto* FileMemory = (uint8*)mmap(nullptr, SingleFile.Size, PROT_READ, MAP_SHARED,
-                                        fileno(FileToHash), 0);
+    uint32 FileCount = ProcessTree(nullptr, DebugOutput, Header.Name);
 
-        if (!FileMemory) {
-            puts("File read failed!");
-            return -1;
-        }
+    waterfall_footer Footer = {};
+    fwrite(&Footer, sizeof(waterfall_footer), 1, DebugOutput);
 
-        crypto_generichash_state HashState;
-        crypto_generichash_init(&HashState, nullptr, 0, HASH_SIZE);
-        crypto_generichash_update(&HashState, SingleFile.Name, NAME_SIZE);
-        crypto_generichash_update(&HashState, (uc8*)FileMemory, SingleFile.Size);
-        crypto_generichash_final(&HashState, (uc8*)&SingleFile.Hash, HASH_SIZE);
+    waterfall_peer BestPeers[BEST_PEER_COUNT] = {};
+    fwrite(BestPeers, sizeof(waterfall_peer), BEST_PEER_COUNT, DebugOutput);
 
-        Waterfall.Files = &SingleFile;
-    }
-    if (isDirectory) {
-        if (GlobalFiles.Files) {
-            free(GlobalFiles.Files);
-        }
-        GlobalFiles.Files = (waterfall_file*)malloc(100 * sizeof(waterfall_file));
-        GlobalFiles.Capacity = 100;
-        GlobalFiles.Count = 0;
-        nftw((c8*)Waterfall.Header.Name, AddFile, 10, FTW_MOUNT | FTW_CHDIR);
-        Waterfall.Files = GlobalFiles.Files;
-        Waterfall.Header.FileCount = GlobalFiles.Count;
-    }
-
-
-    crypto_sign_detached(Waterfall.Header.Signature, nullptr,
-                         (uc8*)&Waterfall.Header,
-                         sizeof(waterfall_header) - SIG_SIZE,
-                         Waterfall.Header.SK);
-
-    crypto_sign_state SignState;
-    crypto_sign_init(&SignState);
-    crypto_sign_update(&SignState, (uc8*)Waterfall.Files,
-                       Waterfall.Header.FileCount * sizeof(waterfall_file));
-    crypto_sign_final_create(&SignState, Waterfall.Footer.Signature, nullptr,
-                             Waterfall.Header.SK);
     // TODO(bryce): Add peers
+    fclose(DebugOutput);
 
 
-    FILE* DebugOutput = fopen("test.waterfall", "wb");
-    fwrite(&Waterfall.Header, sizeof(waterfall_header), 1, DebugOutput);
-    fwrite(Waterfall.Files, sizeof(waterfall_file), Waterfall.Header.FileCount,
-           DebugOutput);
-    fwrite(&Waterfall.Footer, sizeof(waterfall_footer), 1, DebugOutput);
-    fwrite(Waterfall.BestPeers, sizeof(waterfall_peer), BEST_PEER_COUNT, DebugOutput);
-    fwrite(Waterfall.Peers, sizeof(waterfall_peer), Waterfall.Footer.PeerCount,
-           DebugOutput);
+    int32 DebugOutputNo = open(TEST_FILENAME, O_RDWR);
+    waterfall Mapped = {};
+    // TODO(bryce): This will need to account for real peer size too
+    uint64 WaterfallFileSize = sizeof(waterfall_header) +
+                               sizeof(waterfall_file) * FileCount +
+                               sizeof(waterfall_footer) +
+                               sizeof(waterfall_peer) * BEST_PEER_COUNT;
+    Mapped.Header = (waterfall_header*)mmap(nullptr, WaterfallFileSize,
+                                            PROT_READ | PROT_WRITE, MAP_SHARED,
+                                            DebugOutputNo, 0);
+    if (Mapped.Header == MAP_FAILED) {
+        puts("Something went very wrong with the final mmap!");
+    }
+    close(DebugOutputNo);
 
+    Mapped.Files = (waterfall_file*)(Mapped.Header + 1);
+    Mapped.Footer = (waterfall_footer*)(Mapped.Files + FileCount);
+    Mapped.BestPeers = (waterfall_peer*)(Mapped.Footer + 1);
+    Mapped.Peers = Mapped.BestPeers + BEST_PEER_COUNT;
+
+    Mapped.Header->FileCount = FileCount;
+    crypto_sign_detached((uc8*)&Mapped.Header->Signature, nullptr,
+                         (uc8*)Mapped.Header,
+                         (uc8*)&Mapped.Header->FileCount - (uc8*)Mapped.Header,
+                         (uc8*)&Mapped.Header->SK);
+
+    crypto_sign_detached((uc8*)&Mapped.Footer->Signature, nullptr,
+                         (uc8*)Mapped.Files,
+                         sizeof(waterfall_file) * FileCount,
+                         (uc8*)&Mapped.Header->SK);
+
+    munmap(Mapped.Header, WaterfallFileSize);
 
     return 0;
 }

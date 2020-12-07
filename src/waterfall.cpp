@@ -78,9 +78,10 @@ struct waterfall_peer {
 };
 
 struct waterfall {
-    waterfall_header Header;
-    waterfall_file *Files;
-    waterfall_footer Footer;
-    waterfall_peer BestPeers[BEST_PEER_COUNT];
-    waterfall_peer *Peers;
+    waterfall_header* Header;
+    waterfall_file* Files;
+    waterfall_footer* Footer;
+    // NOTE(bryce): \/ Must be BEST_PEER_COUNT in length
+    waterfall_peer* BestPeers;
+    waterfall_peer* Peers;
 };
