@@ -41,16 +41,19 @@ The file is broken into blocks of 64 Bytes. Note that little-endian systems are 
 +----------------------------------------------------------------+
 
 Start of files: directiories will have a size of 0 and the hash will only include the name. if the parent dir is a regular file, then this file is a piece.
-The piece number is the piece size which is a bit weird. I guess pieces also don't have to have the same sizes. Hmm, more thought to be done here.
+The piece number is 
 +----------------------------------------------------------------+
-|Null terminated string with the name of the file. Max 255 bytes |
-|UTF-8 encoded. Forward slash not allowed. Windows will need     |
-|special considerations to allow 1-1 name conversions. Filenames |
-|may also not be one or two dots or nothing.                     |
-+----------------------------------------------------------------+
-|8BFileSz8BCrDate8BChDate4BPS4BFV4BPMFlags/Reserved--------------| (File Size, Creation Timestamp, Change Timespamp, Piece Size, File Version, Permissions, Flags)
+|8BFileSz8BCrDate8BChDate4BPN4BFV4BPM8BNamePtFlags/Reserved------| (Size, Create Timestamp, Change Timespamp, Piece Number, Version, Permissions, Name Index, Flags)
 +----------------------------------------------------------------+
 |32B hash info and file multipart32B hash of parent directory    | (dir hash 0 if file at root)
++----------------------------------------------------------------+
+
+Name section:
++----------------------------------------------------------------+
+|4 Byte Number of Rows, 60 Bytes reserved                        |
++----------------------------------------------------------------+
+|The number of name rows specified. File names are tightly packed|
+|and are null terminated.                                        |
 +----------------------------------------------------------------+
 
 Footer:
