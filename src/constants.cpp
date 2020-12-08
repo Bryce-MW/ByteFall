@@ -22,5 +22,4 @@ typedef double real64;
 #define internal static
 #define local_persist static
 
-typedef unsigned char uc8;
 typedef char c8;

@@ -25,7 +25,7 @@ struct waterfall_header {
     uint32 VersionPatch;
     uint8 Reserved0_[20];
 
-    uint8 Name[NAME_SIZE];
+    c8 Name[NAME_SIZE];
     uint8 Salt[SALT_SIZE];
 
     uint8 WaterfallHash[HASH_SIZE];
