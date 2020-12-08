@@ -50,7 +50,7 @@ The piece number is
 
 Name section:
 +----------------------------------------------------------------+
-|4 Byte Number of Rows, 60 Bytes reserved                        |
+|8 Byte Size, 4 Byte Number of Rows, 60 Bytes reserved           |
 +----------------------------------------------------------------+
 |The number of name rows specified. File names are tightly packed|
 |and are null terminated.                                        |
