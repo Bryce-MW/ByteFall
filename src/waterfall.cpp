@@ -41,24 +41,23 @@ struct waterfall_header {
 };
 
 struct waterfall_file {
-    uint8 Name[NAME_SIZE];
-
     uint64 Size;
     uint64 CreationDate;
     uint64 ModificationDate;
+    uint64 NameIndex;
     uint32 PieceSize;
     uint32 Version;
     uint32 Permissions;
-    uint8 Reserved0_[28];
+    uint8 Reserved0_[20];
 
     uint8 Hash[HASH_SIZE];
     uint8 ParentHash[HASH_SIZE];
 };
 
-struct waterfall_file_arena {
-    waterfall_file *Files;
-    uint32 Capacity;
-    uint32 Count;
+struct waterfall_names_header {
+    uint64 Size;
+    uint32 Rows;
+    uint8 Reserved0_[52];
 };
 
 struct waterfall_footer {
@@ -80,6 +79,9 @@ struct waterfall_peer {
 struct waterfall {
     waterfall_header* Header;
     waterfall_file* Files;
+    waterfall_names_header* NamesHeader;
+    // NOTE(bryce): \/ Must be a multiple of 64 bytes
+    uint8* Names;
     waterfall_footer* Footer;
     // NOTE(bryce): \/ Must be BEST_PEER_COUNT in length
     waterfall_peer* BestPeers;
