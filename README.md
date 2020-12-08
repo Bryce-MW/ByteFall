@@ -39,12 +39,14 @@ The file is broken into blocks of 64 Bytes. Note that little-endian systems are 
 |64 Bytes private key OR empty                                   |
 +----------------------------------------------------------------+
 
-Start of files: directiories will have a size of 0 and the hash will only include the name. if the parent dir is a regular file, then this file is a piece.
-The piece number is 
+Start of files:
+Size is 0 if it is a directory. Name index is the 0-index into the Name rows which contains the filename.
+Piece number is ignored for a regular file, 0-indexed otherewise.
+File version must be incremented if the hash changes since it is used to quickly check for changes without rehashing.
+Permissions is currently just UNIX file modes but will change in the future.
+Parent index is a 0 index into the files which specifies where the parent is. If the parent index is the same as the current index, it is at the root.
 +----------------------------------------------------------------+
-|8BFileSz8BCrDate8BChDate8BNamePt4BPN4BFV4BPMFlags/Reserved------| (Size, Create Timestamp, Change Timespamp, Piece Number, Version, Permissions, Name Index, Flags)
-+----------------------------------------------------------------+
-|32B hash info and file multipart32B hash of parent directory    | (dir hash 0 if file at root)
+|32B hash info and file multipart8BFileSz8BNamePt4BPN4BFV4BPM4BPI| (Size, Name Index, Piece Numbre, File Version, Permissions, Parent Index)
 +----------------------------------------------------------------+
 
 Name section:
