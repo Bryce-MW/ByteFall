@@ -174,14 +174,14 @@ main(int32 argc, c8** argv) {
     Header.VersionMajor = VERSION_MAJOR;
     Header.VersionMinor = VERSION_MINOR;
     Header.VersionPatch = VERSION_PATCH;
-    strcpy(Header.Name, argv[2]);
+    strcpy(Header.Name, SourceFileName);
     randombytes_buf(&Header.Salt, SALT_SIZE);
     crypto_generichash(Header.WaterfallHash, HASH_SIZE,
                        (uint8*)Header.Name, NAME_SIZE + SALT_SIZE,
                        nullptr, 0);
     crypto_sign_keypair(Header.PK, Header.SK);
 
-    FILE* DebugOutput = fopen(argv[1], "wb");
+    FILE* DebugOutput = fopen(OutputFileName, "wb");
     fwrite(&Header, sizeof(waterfall_header), 1, DebugOutput);
 
     waterfall_names_header NamesHeader = {};
@@ -206,7 +206,7 @@ main(int32 argc, c8** argv) {
     fclose(DebugOutput);
 
 
-    int32 DebugOutputNo = open(argv[1], O_RDWR);
+    int32 DebugOutputNo = open(OutputFileName, O_RDWR);
     waterfall Mapped = {};
     // TODO(bryce): This will need to account for real peer size too
     uint64 WaterfallFileSize = sizeof(waterfall_header) +
