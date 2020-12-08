@@ -9,7 +9,6 @@ This software is currently on version alpha 0.1.0 which means that I havent impl
 * Mitigation of increase of connected components such that some nodes would not have a path to an update or full node?
 * Perhaps separate download peers from fountain file distribution peers?
 * Cloudflare workers system for distibuting updates. Like if we could have a little centralization, the waterfall signer could sign the new timestamp and say hey, I have a new version, here is where to get it, nodes ask if anyone knows how to find it, if it turns out no one knows, ask directly.
-* Might be best to identify originating peer with address rather than pub key.
 * Finding a way to host that small amount of centralization in a way that will hopefully never go away or is fault tolerant without bringing the network down if someone says they are doing it but don't is hard. I guess we can do a free tier of some cloud provider and hope that never goes away or uses enough CPU that it stops being free.
 * Cloudflare workers has a free tier that allows 100000 requests per day and free workers.dev subdomain. That could be a good start and means that we could pay with donations if it becomes popular but if it dies out, it would still work for free for a long time (hopefully). Not as super robust but should be good enough until someone smart has a better idea.
 * Possible use of WHOIS system to find domain of workers in case that needs to be switched at some point.
@@ -79,3 +78,5 @@ I am currently building with clang so you will need that. I have a very basic ma
 Anyway, as of now, you will need to install libsodium headers. On macOS with HomeBrew, that is as simple as `brew install sodium` and on Ubuntu that is `apt install libsodium-dev`. You will also have to create a build directory since I haven't added that to make yet. Then you just need to run `make` and that's about it. The output is in the build directory.
 # Usage
 As of writing this, I have only implemented a very basic creation of waterfall files from a file or directory. When you run the program, it will prompt you for the name of the file or directory to create the waterfall from. It will then go and create it. Currrently the output is always called `test.waterfall`. There is no way to easilly check if it worked correctly. Right now I am just opening it in a hex editor with 64 byte rows and checking against the spec. I want to tighten up this creation system a little more before reading and actually doing stuff. It's getting there though!
+
+In the next version, you will be required to provide two commandline arguents, the output filename, and the input file or folder.
