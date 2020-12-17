@@ -41,17 +41,13 @@ struct waterfall_header {
 };
 
 struct waterfall_file {
+    uint8 Hash[HASH_SIZE];
     uint64 Size;
-    uint64 CreationDate;
-    uint64 ModificationDate;
     uint64 NameIndex;
-    uint32 PieceSize;
+    uint32 PieceNumber;
     uint32 Version;
     uint32 Permissions;
-    uint8 Reserved0_[20];
-
-    uint8 Hash[HASH_SIZE];
-    uint8 ParentHash[HASH_SIZE];
+    uint32 ParentIndex;
 };
 
 struct waterfall_names_header {
