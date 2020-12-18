@@ -25,6 +25,9 @@
  *  * Add CF communication
  *  * Learn more about proper memory management to ensure that I am doing everything the
  *    the correct way to get the best performance
+ *  * Possibly add a version tag to the header to quickly see if this is really a new
+ *    version. I am not sure that I will need it though so I am holding off until I start
+ *    working on the protocol.
  */
 
 struct file_type {
@@ -162,12 +165,6 @@ ProcessTree(uint32 ParentIndex, uint32 OtherChildrenCount, FILE* WaterfallFile,
     return Result;
 }
 
-struct simple_u32_dynamic_array {
-    uint32 count;
-    uint32 max;
-    uint32* array;
-};
-
 int
 main(int32 argc, c8** argv) {
     if (argc != 3) {
@@ -186,11 +183,6 @@ main(int32 argc, c8** argv) {
     Header.VersionMinor = VERSION_MINOR;
     Header.VersionPatch = VERSION_PATCH;
     strcpy(Header.Name, SourceFileName);
-    randombytes_buf(&Header.Salt, SALT_SIZE);
-    crypto_generichash(Header.WaterfallHash, HASH_SIZE,
-                       (uint8*)Header.Name, NAME_SIZE + SALT_SIZE,
-                       nullptr, 0);
-    crypto_sign_keypair(Header.PK, Header.SK);
 
     FILE* DebugOutput;
     bool32 UseTmpFile;
@@ -205,6 +197,14 @@ main(int32 argc, c8** argv) {
     }
     DebugOutput = fopen(OutputFileName, "w+b");
     fwrite(&Header, sizeof(waterfall_header), 1, DebugOutput);
+
+    if (!UseTmpFile) {
+        randombytes_buf(&Header.Salt, SALT_SIZE);
+        crypto_generichash(Header.WaterfallHash, HASH_SIZE,
+                           (uint8*)Header.Name, NAME_SIZE + SALT_SIZE,
+                           nullptr, 0);
+        crypto_sign_keypair(Header.PK, Header.SK);
+    }
 
     waterfall_names_header NamesHeader = {};
     NamesHeader.Size = 0;
@@ -323,6 +323,13 @@ main(int32 argc, c8** argv) {
                 }
             }
         }
+        memcpy(Mapped.Header->Salt, OldWaterfall.Header->Salt, SALT_SIZE);
+        crypto_generichash(Mapped.Header->WaterfallHash, HASH_SIZE,
+                           (uint8*)Mapped.Header->Name, NAME_SIZE + SALT_SIZE,
+                           nullptr, 0);
+
+        memcpy(Mapped.Header->PK, OldWaterfall.Header->PK, PK_SIZE);
+        memcpy(Mapped.Header->SK, OldWaterfall.Header->SK, SK_SIZE);
         munmap(MappingStart, Properties.st_size);
     }
 
