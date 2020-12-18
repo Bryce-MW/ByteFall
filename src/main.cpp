@@ -180,233 +180,6 @@ main(int32 argc, c8** argv) {
         return -1;
     }
 
-#if 0
-    int32 DebugOutputNo = open(OutputFileName, O_RDWR);
-    waterfall Mapped = {};
-    struct stat Properties;
-    if (stat(OutputFileName, &Properties)) {
-        puts("File not found!");
-        puts(OutputFileName);
-        return 0;
-    }
-
-    void* MappingStart = mmap(nullptr, Properties.st_size, PROT_READ, MAP_SHARED,
-                              DebugOutputNo, 0);
-    if (Mapped.Header == MAP_FAILED) {
-        puts("Something went very wrong with mmap!");
-        return -1;
-    }
-    close(DebugOutputNo);
-
-    Mapped.Header = (waterfall_header*)MappingStart;
-    Mapped.Files = (waterfall_file*)(Mapped.Header + 1);
-    Mapped.NamesHeader = (waterfall_names_header*)(Mapped.Files +
-            Mapped.Header->FileCount);
-    Mapped.Names = (uint8*)(Mapped.NamesHeader + 1);
-    Mapped.Footer = (waterfall_footer*)(Mapped.Names + Mapped.NamesHeader->Rows * 64);
-    Mapped.BestPeers = (waterfall_peer*)(Mapped.Footer + 1);
-    Mapped.Peers = Mapped.BestPeers + BEST_PEER_COUNT;
-
-    // TODO(bryce): Find a \/ way to resolve this error
-    if ((uint64)Properties.st_size < sizeof(waterfall_header) +
-                                     sizeof(waterfall_names_header) +
-                                     sizeof(waterfall_footer) +
-                                     sizeof(waterfall_peer)*BEST_PEER_COUNT) {
-        puts("Size is not large enough for headers");
-        return -1;
-    }
-
-    if ((uint64)Properties.st_size < sizeof(waterfall_header) +
-                                     sizeof(waterfall_names_header) +
-                                     sizeof(waterfall_footer) +
-                                     sizeof(waterfall_peer)*BEST_PEER_COUNT +
-                                     sizeof(waterfall_file)*Mapped.Header->FileCount) {
-        puts("Size is not large enough for files");
-        return -1;
-    }
-
-    if ((uint64)Properties.st_size < sizeof(waterfall_header) +
-                                     sizeof(waterfall_file)*Mapped.Header->FileCount +
-                                     sizeof(waterfall_names_header) +
-                                     Mapped.NamesHeader->Rows*64 +
-                                     sizeof(waterfall_footer) +
-                                     sizeof(waterfall_peer)*BEST_PEER_COUNT) {
-        puts("Size is not large enough for names");
-        return -1;
-    }
-
-    if (memcmp(Mapped.Header->MagicString, MAGIC_STRING, MAGIC_STRING_SIZE) != 0) {
-        puts("Magic string is not correct");
-        return -1;
-    }
-
-    // TODO(bryce): Check the version and use that to enable/disable features.
-
-    uint8 ActualWaterfallHash[HASH_SIZE];
-    crypto_generichash(ActualWaterfallHash, HASH_SIZE,
-                       (uint8*)Mapped.Header->Name, NAME_SIZE + SALT_SIZE,
-                       nullptr, 0);
-    if (memcmp(ActualWaterfallHash, Mapped.Header->WaterfallHash, HASH_SIZE) != 0) {
-        puts("Waterfall Hash does not match");
-        return -1;
-    }
-
-    if (crypto_sign_verify_detached(Mapped.Header->Signature, (uint8*)Mapped.Header,
-                                    (uint8*)&Mapped.Header->FileCount -
-                                    (uint8*)Mapped.Header,
-                                    Mapped.Header->PK) != 0) {
-        puts("Header signature is not correct");
-        return -1;
-    }
-
-    bool32 Empty = true;
-    for (uint32 I = 0; (I < (SK_SIZE/8)) && Empty; ++I) {
-        if (((uint64*)Mapped.Header->SK)[I]) {
-            Empty = false;
-        }
-    }
-    if (Empty) {
-        puts("Currently, this program is only used to update secret waterfalls");
-        return -1;
-    }
-
-    if (crypto_sign_verify_detached(Mapped.Footer->Signature, (uint8*)Mapped.Files,
-                                    sizeof(waterfall_file) *
-                                    Mapped.Header->FileCount +
-                                    sizeof(waterfall_names_header) +
-                                    Mapped.NamesHeader->Rows * 64,
-                                    Mapped.Header->PK) != 0) {
-        puts("Header signature is not correct");
-        return -1;
-    }
-
-    // TODO(bryce): Check peers
-
-    // TODO(bryce): Check the files
-    // STUDY(bryce): For now, we will be using a simple linear search which will cause a
-    //  n^2 cost for searching through the existing files.
-    // NOTE(bryce): So what I am thinking is to go through all of the files, check if
-    //  if they exist, need updating, etc. I will mark non-existent ones as being free
-    //  to use again. Then I will go through the new files and fill in the holes as I
-    //  can. When that is full and I need more space, I will use the mem remap thing to
-    //  expand the mapping as needed. I'll also have to copy the footer and peers if I
-    //  need to do this. I think that I should also rebuild the names cache. This whole
-    //  process needs to be better thought about since it seems to be rather bad in
-    //  terms of memory space and time complexity.
-
-    simple_u32_dynamic_array ExtraSlots = {};
-    ExtraSlots.max = 8;
-    ExtraSlots.array = (uint32*)malloc(4*8);
-
-    // TODO(bryce): Rebuild the name cache so that we can remove names for nonexistent
-    //  files
-    c8* Path = nullptr;
-    // TODO(bryce): This could end up with a smaller size than the rows so it will need
-    //  to be shrunk before writing
-    auto* NewNameCache = (c8*)malloc(Mapped.NamesHeader->Rows*64);
-    uint32 NewNameCacheSize = 0;
-    uint32 NewNameCacheRows = Mapped.NamesHeader->Rows;
-    for (uint32 FileIndex = 0; FileIndex < Mapped.Header->FileCount; FileIndex++) {
-        waterfall_file* File = &Mapped.Files[FileIndex];
-        waterfall_file* NextFile = File;
-        uint32 NextIndex = FileIndex;
-        uint64 PathSize = strlen((c8*)&Mapped.Names[File->NameIndex]) + 1;
-        Path = (c8*)realloc(Path, PathSize);
-        strcpy(Path, (c8*)&Mapped.Names[File->NameIndex]);
-        while(NextFile->ParentIndex != NextIndex) {
-            NextFile = &Mapped.Files[NextIndex];
-            NextIndex = NextFile->ParentIndex;
-            uint64 NewNameSize = strlen((c8*)&Mapped.Names[NextFile->NameIndex]) + 1;
-            PathSize += NewNameSize;
-            Path = (c8*)realloc(Path, PathSize);
-            memmove(Path + NewNameSize, Path, PathSize);
-            memcpy(Path, (c8*)&Mapped.Names[NextFile->NameIndex], NewNameSize);
-            Path[NewNameSize - 1] = '/';
-        }
-
-        struct stat SystemFileStat;
-        if (stat(Path, &SystemFileStat)) {
-            // NOTE(bryce): stat returns -1 if an error occurs, 0 otherwise
-            if (ExtraSlots.count == ExtraSlots.max) {
-                ExtraSlots.max *= 2;
-                ExtraSlots.array = (uint32*)realloc(ExtraSlots.array,
-                                                    4*ExtraSlots.max);
-            }
-            ExtraSlots.array[ExtraSlots.count++] = FileIndex;
-        } else {
-            // NOTE(bryce): File was found
-            if (NewNameCacheSize == NewNameCacheRows*64) {
-                // TODO(bryce): Ensure that the new size can fit the new name
-                NewNameCache = (c8*)realloc(NewNameCache, ++NewNameCacheRows*64);
-            }
-            uint64 NameLength = strlen((c8*)&Mapped.Names[File->NameIndex]) + 1;
-            memcpy(&NewNameCache[NewNameCacheSize], &Mapped.Names[File->NameIndex],
-                   NameLength);
-            File->NameIndex = NewNameCacheSize;
-            NewNameCacheSize += NameLength;
-            // TODO(bryce): Figure out why off_t is signed
-            if ((uint64)SystemFileStat.st_size != File->Size ||
-                SystemFileStat.st_mode != File->Permissions) {
-                // NOTE(bryce): We don't even need to compare hashes
-                uint32 CurrentVersion = File->Version;
-                file_type SystemFileType = GetFileType(&SystemFileStat);
-                FillFileProperties(File, &SystemFileStat, SystemFileType);
-                File->Version = CurrentVersion + 1;
-                HashFile(File, SystemFileType, Path, (c8*)Mapped.Names,
-                         strlen((c8*)&Mapped.Names[File->NameIndex]));
-            } else {
-                // NOTE(bryce): We must rehash and compare
-                uint8 OldHash[HASH_SIZE];
-                memcpy(OldHash, File->Hash, HASH_SIZE);
-                file_type SystemFileType = GetFileType(&SystemFileStat);
-                HashFile(File, SystemFileType, Path, (c8*)Mapped.Names,
-                         strlen((c8*)&Mapped.Names[File->NameIndex]));
-                if (memcmp(OldHash, File->Hash, HASH_SIZE) != 0) {
-                    uint32 CurrentVersion = File->Version;
-                    FillFileProperties(File, &SystemFileStat, SystemFileType);
-                    File->Version = CurrentVersion + 1;
-                }
-            }
-        }
-    }
-    free(Path);
-
-    Mapped.Header->FileCount -= ExtraSlots.count;
-
-    /*
-     * NOTE(bryce): Let's think about what we are going to do here. What I want to do is
-     *  √ Copy the footer and best peers to a temporary location.
-     *  * Then I can go back and loop through the files
-     *   * Check if they exist already, and
-     *   * otherwise slot them into an open area.
-     *    * If we run out, do an unmap.
-     *    * Check if existent first.
-     *  * Then, I need to check if there is space left, if so,
-     *   * defrag in a simple way, and
-     *   * copy everything back in as needed
-     *   * including the required shrinking of the file.
-     *  * If there are no holes and no extra space used,
-     *   * shrink size back to what it was
-     *   * and update everything as needed.
-     *  * Remember to check the size of the new names section as well.
-     *  * If more space was used,
-     *   * then we need to calculate the new file size and
-     *   * copy everything back in as needed.
-     */
-
-    waterfall_footer StoredFooter;
-    memcpy(&StoredFooter, Mapped.Footer, sizeof(waterfall_footer));
-
-    waterfall_peer StoredBestPeers[BEST_PEER_COUNT];
-    memcpy(&StoredBestPeers, Mapped.BestPeers,
-           sizeof(waterfall_peer)*BEST_PEER_COUNT);
-
-
-
-    if (MappingStart) {
-        munmap(Mapped.Header, Properties.st_size);
-    }
-#endif
     waterfall_header Header = {};
     memcpy(Header.MagicString, MAGIC_STRING, 32);
     Header.VersionMajor = VERSION_MAJOR;
@@ -430,7 +203,7 @@ main(int32 argc, c8** argv) {
             puts("Could not create temporary file");
         }
     }
-    DebugOutput = fopen(OutputFileName, "wb");
+    DebugOutput = fopen(OutputFileName, "w+b");
     fwrite(&Header, sizeof(waterfall_header), 1, DebugOutput);
 
     waterfall_names_header NamesHeader = {};
@@ -451,11 +224,6 @@ main(int32 argc, c8** argv) {
 
     waterfall_peer BestPeers[BEST_PEER_COUNT] = {};
     fwrite(BestPeers, sizeof(waterfall_peer), BEST_PEER_COUNT, DebugOutput);
-
-
-    if (UseTmpFile) {
-        // TODO(bryce): Check existing files
-    }
 
     // TODO(bryce): Add peers
 
@@ -489,6 +257,75 @@ main(int32 argc, c8** argv) {
     Mapped.Peers = Mapped.BestPeers + BEST_PEER_COUNT;
 
     Mapped.Header->FileCount = FileCount;
+
+    if (UseTmpFile) {
+        // TODO(bryce): Check that the file is valid (we are just assuming
+        //  that it is for now.
+        int32 DebugOutputNo = open(TmpFileName, O_RDWR);
+        waterfall OldWaterfall = {};
+        struct stat Properties;
+        if (stat(OutputFileName, &Properties)) {
+            puts("File not found!");
+            puts(OutputFileName);
+            return 0;
+        }
+        void* MappingStart = mmap(nullptr, Properties.st_size, PROT_READ, MAP_SHARED,
+                                  DebugOutputNo, 0);
+        if (OldWaterfall.Header == MAP_FAILED) {
+            puts("Something went very wrong with mmap of the backup!");
+            return -1;
+        }
+        close(DebugOutputNo);
+
+        OldWaterfall.Header = (waterfall_header*)MappingStart;
+        OldWaterfall.Files = (waterfall_file*)(OldWaterfall.Header + 1);
+        OldWaterfall.NamesHeader = (waterfall_names_header*)(OldWaterfall.Files +
+                                                             OldWaterfall.Header->FileCount);
+        OldWaterfall.Names = (uint8*)(OldWaterfall.NamesHeader + 1);
+        OldWaterfall.Footer = (waterfall_footer*)(OldWaterfall.Names + OldWaterfall.NamesHeader->Rows * 64);
+        OldWaterfall.BestPeers = (waterfall_peer*)(OldWaterfall.Footer + 1);
+        OldWaterfall.Peers = OldWaterfall.BestPeers + BEST_PEER_COUNT;
+
+        // STUDY(bryce): For now, we will be using a simple linear search which will cause a
+        //  n^2 cost for searching through the existing files.
+        for (uint32 FileIndex = 0; FileIndex < OldWaterfall.Header->FileCount; FileIndex++) {
+            waterfall_file* File = OldWaterfall.Files + FileIndex;
+            waterfall_file* NextFile = File;
+            uint32 NextIndex = FileIndex;
+            for (uint32 UpdatedFileIndex = 0; UpdatedFileIndex < Mapped.Header->FileCount; UpdatedFileIndex++) {
+                waterfall_file* UpdatedFile = Mapped.Files + UpdatedFileIndex;
+                bool32 Found = true;
+                if (!strcmp((c8*)Mapped.Names + UpdatedFile->NameIndex, (c8*)OldWaterfall.Names + File->NameIndex)) {
+                    // NOTE(bryce): They are the same
+                    waterfall_file* NextUpdated = UpdatedFile;
+                    uint32 NextUpdatedIndex = UpdatedFileIndex;
+                    while (NextFile->ParentIndex != NextIndex && NextUpdated->ParentIndex != UpdatedFileIndex) {
+                        NextFile = OldWaterfall.Files + NextIndex;
+                        NextIndex = NextFile->ParentIndex;
+                        NextUpdated = Mapped.Files + NextUpdatedIndex;
+                        NextUpdatedIndex = NextUpdated->ParentIndex;
+                        if (strcmp((c8*)Mapped.Names + NextUpdated->NameIndex,
+                                   (c8*)OldWaterfall.Names + NextFile->NameIndex) != 0) {
+                            // NOTE(bryce): Strings were not the same
+                            Found = false;
+                            break;
+                        }
+                    }
+
+                    if (Found) {
+                        if (memcmp(UpdatedFile->Hash, File->Hash, HASH_SIZE) != 0) {
+                            // NOTE(bryce): Hashes differ so we need top update the file
+                            UpdatedFile->Version++;
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+        munmap(MappingStart, Properties.st_size);
+    }
+
     crypto_sign_detached(Mapped.Header->Signature, nullptr,
                          (uint8*)Mapped.Header,
                          (uint8*)&Mapped.Header->FileCount - (uint8*)Mapped.Header,
