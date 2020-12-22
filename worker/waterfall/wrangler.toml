@@ -1,0 +1,7 @@
+name = "waterfall"
+type = "javascript"
+account_id = "295b25f5849109d0a48c5025d280572d"
+workers_dev = true
+route = ""
+zone_id = ""
+kv_namespaces = [{binding="Waterfalls",id="82d7363ba473421a9e5aca2bbc4b7c44",preview_id="82d7363ba473421a9e5aca2bbc4b7c44"}]

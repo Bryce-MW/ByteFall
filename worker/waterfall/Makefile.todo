@@ -1,0 +1,14 @@
+PATH=/usr/local/opt/llvm/bin:$PATH
+
+ERROR_FLAGS=-Werror -ferror-limit=0 -Wall -Wextra -pedantic-errors
+# Disable -Werror if you can't compile due to differing compiler versions.
+COMMON_FLAGS=-std=gnu++17 -O0 -g -fno-exceptions --no-standard-libraries -fno-rtti
+# Add -fsanitize=address to check for memory issues
+# Optimizations will happen later
+LINK_OPTIONS=-Wl,--export-all -Wl,--no-entry #-lsodium
+
+all:
+	clang++ --target=wasm64 $(ERROR_FLAGS) $(COMMON_FLAGS) main.cpp -o waterfall.wasm  $(LINK_OPTIONS)
+
+clean:
+	rm -r build/*
