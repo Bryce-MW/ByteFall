@@ -2,14 +2,14 @@
   "body_part":"script",
   "bindings": [
     {
-      "name":"TEST_WASM",
-      "type":"wasm_module",
-      "part":"wasm"
+      "name": "WATERFALL_WASM",
+      "type": "wasm_module",
+      "part": "wasm"
     },
     {
-      "name":"Waterfalls",
-      "type":"kv_namespace",
-      "namespace_id":"82d7363ba473421a9e5aca2bbc4b7c44"
+      "name": "WF_KV",
+      "type": "kv_namespace",
+      "namespace_id": "82d7363ba473421a9e5aca2bbc4b7c44"
     }
   ]
 }
