@@ -16,7 +16,7 @@ This software is currently on version alpha 0.1.1 which means that I havent impl
 * The files should be listed in a hash table format so that searching for any specific one by their hash is easy to do.
 # Technical Details
 ## Libraries
-I will be using [libzt](https://github.com/zerotier/libzt) for the networking. This avoids issues with NAT and port forwarding and does the required encryption for me. It just solves many problems with few downsides. For the basic HTTP requests that I need to interact with Cloudflare Workers, I will be using [libcurl](https://curl.se/libcurl/) which will also do th Base64 encoding (though it is apparently rather slow at this). I will also need to parse the JSON that is produced from that and create JSON to send to it. [cJSON](https://github.com/DaveGamble/cJSON) seems to be one of the better ways to do this.
+I will be using [libzt](https://github.com/zerotier/libzt) for the networking. This avoids issues with NAT and port forwarding and does the required encryption for me. It just solves many problems with few downsides. For the basic HTTP requests that I need to interact with Cloudflare Workers, I will be using [libcurl](https://curl.se/libcurl/). I do need base64 encoding which seems to be hard to do with libcurl. I will instead use [b64.c](https://github.com/littlstar/b64.c). I will also need to parse the JSON that is produced from that and create JSON to send to it. [cJSON](https://github.com/DaveGamble/cJSON) seems to be one of the better ways to do this.
 ## Waterfall File Structure
 The file is broken into blocks of 64 Bytes. Note that little-endian systems are requiered. The structure is roughly as follows:
 ```
