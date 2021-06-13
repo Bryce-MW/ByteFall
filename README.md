@@ -53,6 +53,12 @@ consider it good enough to be used in production and hopefully few breaking chan
 
 * Add something to the header to show what version of the Waterfall we are at.
 
+* Reject more bad filenames like those that include control characters. Note that Unicode is like way more unsafe than
+  you might want but we can try our best. Maybe make a crate that others can use.
+
+* For the 1.0 release, maybe make it so that everyone has the full route table thing. But make it clear that this will
+  change in the 2.0 release so you must be sure to update when that comes out.
+
 ## Additional notes found in the old C++ files
 
 * Handle errors properly
