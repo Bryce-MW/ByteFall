@@ -51,6 +51,8 @@ consider it good enough to be used in production and hopefully few breaking chan
 
 * The files should be listed in a hash table format so that searching for any specific one by their hash is easy to do.
 
+* Add something to the header to show what version of the Waterfall we are at.
+
 ## Additional notes found in the old C++ files
 
 * Handle errors properly
@@ -101,13 +103,13 @@ Start of files:
 Size is 0 if it is a directory. Name index is the 0-index into the Name rows which contains the filename.
 Piece number is ignored for a regular file, 0-indexed otherewise.
 File version must be incremented if the hash changes since it is used to quickly check for changes without rehashing.
-Permissions is currently just UNIX file modes but will change in the future.
+Permissions is not implemented so it's reserved.
 Parent index is a 0 index into the files which specifies where the parent is. If the parent index is the same as the
   current index, it is at the root.
 +----------------------------------------------------------------+
 |32B hash info and file multipart8BFileSz8BNamePt4BPN4BFV4BPM4BPI|
 +----------------------------------------------------------------+
-(Size, Name Index, Piece Numbre, File Version, Permissions, Parent Index)
+(Size, Name Index, Piece Number, File Version, Permissions, Parent Index)
 
 Name section:
 +----------------------------------------------------------------+
